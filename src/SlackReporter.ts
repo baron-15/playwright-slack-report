@@ -179,6 +179,25 @@ class SlackReporter implements Reporter {
       });
       // eslint-disable-next-line no-console
       console.log(JSON.stringify(result, null, 2));
+      if (this.showInThread) {
+        for (let i = 0; i < result.length; i += 1) {
+          // eslint-disable-next-line no-await-in-loop
+          const logResult = await slackClient.sendConsoleLogs({
+            channelIds: [result[i].channel],
+            summaryResults: resultSummary,
+            threadTimestamp: result[i].ts,
+          });
+          // eslint-disable-next-line no-console
+          console.log(JSON.stringify(logResult, null, 2));
+        }
+      } else {
+        const logResult = await slackClient.sendConsoleLogs({
+          channelIds: slackChannels,
+          summaryResults: resultSummary,
+        });
+        // eslint-disable-next-line no-console
+        console.log(JSON.stringify(logResult, null, 2));
+      }
       if (this.showInThread && resultSummary.failures.length > 0) {
         for (let i = 0; i < result.length; i += 1) {
           // eslint-disable-next-line no-await-in-loop

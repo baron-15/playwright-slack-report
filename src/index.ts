@@ -21,6 +21,7 @@ export type SummaryResults = {
       name: string;
       path: string;
     }[];
+    consoleLogs?: string;
   }>;
 };
 

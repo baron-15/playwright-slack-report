@@ -38,6 +38,46 @@ export default class SlackClient {
     return chunks;
   }
 
+  private static getTestDisplayName(test: {
+    name: string;
+    browser?: string;
+    projectName?: string;
+  }): string {
+    const testName = test.name;
+    if (test.browser && test.projectName) {
+      if (test.browser === test.projectName) {
+        return `${testName} [${test.browser}]`;
+      }
+      return `${testName} [Project Name: ${test.projectName}] using ${test.browser}`;
+    }
+    return testName;
+  }
+
+  private static makeFilename(testName: string): string {
+    const safeName = testName.replace(/[^a-zA-Z0-9._-]+/g, '_');
+    const trimmed = safeName.replace(/^_+|_+$/g, '').slice(0, 80);
+    return `${trimmed || 'console-logs'}.txt`;
+  }
+
+  private static buildLogEntries(
+    summaryResults: SummaryResults,
+  ): Array<{ title: string; filename: string; content: string }> {
+    const entries: Array<{ title: string; filename: string; content: string }> = [];
+    for (const test of summaryResults.tests) {
+      const content = test.consoleLogs?.trim();
+      if (!content) {
+        continue;
+      }
+      const title = `${test.suiteName} > ${SlackClient.getTestDisplayName(test)}`;
+      entries.push({
+        title,
+        filename: SlackClient.makeFilename(SlackClient.getTestDisplayName(test)),
+        content,
+      });
+    }
+    return entries;
+  }
+
   async sendMessage({
     options,
   }: {
@@ -174,6 +214,60 @@ export default class SlackClient {
       }
     }
     return result;
+  }
+
+  async sendConsoleLogs({
+    channelIds,
+    summaryResults,
+    threadTimestamp,
+  }: {
+    channelIds: Array<string>;
+    summaryResults: SummaryResults;
+    threadTimestamp?: string;
+  }): Promise<Array<{ channel: string; outcome: string }>> {
+    const entries = SlackClient.buildLogEntries(summaryResults);
+    if (entries.length === 0) {
+      return [];
+    }
+
+    const results: Array<{ channel: string; outcome: string }> = [];
+    for (const channel of channelIds) {
+      for (const entry of entries) {
+        try {
+          const response: any = await this.slackWebClient.files.upload({
+            channels: channel,
+            file: Buffer.from(entry.content, 'utf-8'),
+            filename: entry.filename,
+            filetype: 'text',
+            initial_comment: `Console logs for ${entry.title}`,
+            thread_ts: threadTimestamp,
+          });
+          if (response.ok) {
+            results.push({
+              channel,
+              outcome: threadTimestamp
+                ? `✅ Console logs sent to ${channel} within thread ${threadTimestamp}`
+                : `✅ Console logs sent to ${channel}`,
+            });
+          } else {
+            results.push({
+              channel,
+              outcome: `❌ Failed to send console logs to ${channel}: ${JSON.stringify(
+                response,
+                null,
+                2,
+              )}`,
+            });
+          }
+        } catch (error: any) {
+          results.push({
+            channel,
+            outcome: `❌ Failed to send console logs to ${channel}: ${error.message}`,
+          });
+        }
+      }
+    }
+    return results;
   }
 
   async attachDetailsToThread({

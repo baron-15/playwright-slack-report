@@ -30,6 +30,7 @@ export type testResult = {
     name: string;
     path: string;
   }[];
+  consoleLogs?: string;
 };
 
 export type testSuite = {
@@ -132,6 +133,7 @@ export default class ResultsParser {
               ? this.getFailure(result.error.snippet, result.error.stack)
               : '',
             attachments: result.attachments,
+            consoleLogs: this.buildConsoleLogs(result),
             expectedStatus,
           });
         }
@@ -143,6 +145,55 @@ export default class ResultsParser {
   getFailure(snippet: string, stack: string) {
     const fullError = `${snippet}\r\n${stack || ''}`;
     return this.cleanseReason(fullError);
+  }
+
+  normalizeOutput(output: any[] | undefined): string {
+    if (!output || output.length === 0) {
+      return '';
+    }
+    const parts: string[] = [];
+    for (const entry of output) {
+      if (typeof entry === 'string') {
+        parts.push(entry);
+      } else if (Buffer.isBuffer(entry)) {
+        parts.push(entry.toString('utf-8'));
+      } else if (entry && typeof entry === 'object') {
+        if (typeof entry.text === 'string') {
+          parts.push(entry.text);
+        } else if (entry.text && Buffer.isBuffer(entry.text)) {
+          parts.push(entry.text.toString('utf-8'));
+        } else if (entry.buffer) {
+          if (Buffer.isBuffer(entry.buffer)) {
+            parts.push(entry.buffer.toString('utf-8'));
+          } else if (Array.isArray(entry.buffer)) {
+            parts.push(Buffer.from(entry.buffer).toString('utf-8'));
+          } else if (entry.buffer?.data && Array.isArray(entry.buffer.data)) {
+            parts.push(Buffer.from(entry.buffer.data).toString('utf-8'));
+          } else if (typeof entry.buffer === 'string') {
+            parts.push(entry.buffer);
+          }
+        } else if (typeof entry.toString === 'function') {
+          parts.push(entry.toString());
+        }
+      }
+    }
+    return parts.join('');
+  }
+
+  buildConsoleLogs(result: { stdout?: any[]; stderr?: any[] }): string {
+    const stdout = this.cleanseReason(this.normalizeOutput(result.stdout));
+    const stderr = this.cleanseReason(this.normalizeOutput(result.stderr));
+    if (!stdout && !stderr) {
+      return '';
+    }
+    const sections: string[] = [];
+    if (stdout) {
+      sections.push(`--- stdout ---\n${stdout}`);
+    }
+    if (stderr) {
+      sections.push(`--- stderr ---\n${stderr}`);
+    }
+    return sections.join('\n');
   }
 
   getExpectedFailure(test: any) {
@@ -270,6 +321,7 @@ export default class ResultsParser {
         ).toISOString(),
         reason: this.safelyDetermineFailure(result),
         attachments: result.attachments,
+        consoleLogs: this.buildConsoleLogs(result),
       });
     }
     this.updateResults({
@@ -305,6 +357,7 @@ export default class ResultsParser {
             : this.safelyDetermineFailure(result),
         attachments: result.attachments,
         expectedStatus: testCase.expectedStatus,
+        consoleLogs: this.buildConsoleLogs(result),
       });
     }
     this.updateResults({
