@@ -16,7 +16,7 @@ const program = new Command();
 
 program
   .name('playwright-slack-report - cli')
-  .version('1.0.0')
+  .version('1.0.20260113')
   .description('📦 Send Playwright json results to directly Slack ')
   .option(
     '-c, --config <path>',
